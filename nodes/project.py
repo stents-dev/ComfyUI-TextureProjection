@@ -19,21 +19,21 @@ from ..utils import (
     _dilate_color_by_alpha,
     _dilate_mask,
     _ensure_mask_shape,
-    _erode_mask,
     _get_basecolor_image_from_trimesh,
     _pixel_grid_from_uv,
     _pose_to_w2c,
     _set_basecolor_image_on_trimesh,
     _smoothstep,
     _to_comfy_image_tensor,
+    smooth_normals_across_duplicate_positions,
 )
 
 
 class ProjectImageToMeshUV:
-    DEFAULT_OCCLUSION_DILATION = 9
-    DEFAULT_OCCLUSION_FADE = 10
     DEFAULT_EDGE_FADE_PIXELS = 24
     DEFAULT_EDGE_FADE_POWER = 1.0
+    DEFAULT_DEPTH_BLUR = 1
+    DEFAULT_DEPTH_EPSILON = 3.0e-2
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -44,8 +44,10 @@ class ProjectImageToMeshUV:
                 "image": ("IMAGE",),
                 "texture_size": ("INT", {"default": 2048, "min": 64, "max": 8192, "step": 64}),
                 "flip_vertical": ("BOOLEAN", {"default": True}),
-                "opacity": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "backface_cull": ("BOOLEAN", {"default": True}),
+                "occlusion_enabled": ("BOOLEAN", {"default": True}),
+                "occlusion_dilation": ("INT", {"default": 0, "min": 0, "max": 64, "step": 1}),
+                "occlusion_fade": ("INT", {"default": 4, "min": 0, "max": 64, "step": 1}),
                 "dilation_pixels": ("INT", {"default": 4, "min": 0, "max": 64, "step": 1}),
                 "apply_to_trimesh": ("BOOLEAN", {"default": True}),
             },
@@ -68,8 +70,10 @@ class ProjectImageToMeshUV:
         image,
         texture_size,
         flip_vertical,
-        opacity,
         backface_cull,
+        occlusion_enabled,
+        occlusion_dilation,
+        occlusion_fade,
         dilation_pixels,
         apply_to_trimesh,
         normal_fade_power=2.2,
@@ -92,7 +96,7 @@ class ProjectImageToMeshUV:
         if flip_vertical:
             uv = torch.stack([uv[..., 0], 1.0 - uv[..., 1]], dim=-1)
 
-        vertex_normals_np = np.asarray(trimesh_for_projection.vertex_normals, np.float32)
+        vertex_normals_np = smooth_normals_across_duplicate_positions(trimesh_for_projection)
         vertex_normals = torch.as_tensor(vertex_normals_np, device=device)[None, ...]
 
         size = int(texture_size)
@@ -126,17 +130,9 @@ class ProjectImageToMeshUV:
             device=device,
         ).view(1, 1, 1, 3)
 
-        vertex_normals_view = torch.nn.functional.normalize(vertex_normals, dim=-1)
-        vertex_view_directions = torch.nn.functional.normalize(
-            camera_position[:, :1, :1, :].squeeze(2) - vertices,
-            dim=-1,
-        )
-        normal_dot_vertex = (vertex_normals_view * vertex_view_directions).sum(dim=-1, keepdim=True)
-        normal_dot = drtk.interpolate(normal_dot_vertex, faces, uv_triangle_index, barycentric)
-        if normal_dot.ndim == 4 and normal_dot.shape[1] == 1:
-            normal_dot = normal_dot.permute(0, 2, 3, 1)
-        elif normal_dot.ndim != 4 or normal_dot.shape[-1] != 1:
-            raise RuntimeError(f"Unexpected interpolated dot shape: {tuple(normal_dot.shape)}")
+        interpolated_normals = torch.nn.functional.normalize(interpolated_normals, dim=-1)
+        texel_view_directions = torch.nn.functional.normalize(camera_position - world_position, dim=-1)
+        normal_dot = (interpolated_normals * texel_view_directions).sum(dim=-1, keepdim=True)
 
         if backface_cull:
             facing = _smoothstep(
@@ -315,44 +311,59 @@ class ProjectImageToMeshUV:
             torch.full_like(projector_depth_image, float("inf")),
             projector_depth_image,
         )
+        projector_valid_image = (~projector_background).float()
 
         projector_grid = _pixel_grid_from_uv(u_pixels, v_pixels, render_width, render_height).reshape(1, size, size, 2)
         z_buffer = torch.nn.functional.grid_sample(
             projector_depth_image,
             projector_grid,
-            mode="bilinear",
+            mode="nearest",
+            padding_mode="zeros",
+            align_corners=True,
+        )
+        projector_valid = torch.nn.functional.grid_sample(
+            projector_valid_image,
+            projector_grid,
+            mode="nearest",
             padding_mode="zeros",
             align_corners=True,
         )
 
+        if self.DEFAULT_DEPTH_BLUR > 0:
+            sampled_depth_valid = (projector_valid > 0.5).float()
+            z_buffer_safe = torch.where(sampled_depth_valid > 0.0, z_buffer, torch.zeros_like(z_buffer))
+            z_buffer_blurred = (
+                _blur_mask(z_buffer_safe, self.DEFAULT_DEPTH_BLUR)
+                / _blur_mask(sampled_depth_valid, self.DEFAULT_DEPTH_BLUR).clamp(min=1.0e-6)
+            )
+            z_buffer = torch.where(sampled_depth_valid > 0.0, z_buffer_blurred, z_buffer)
+
         texture_depth = z.view(1, size, size, 1).permute(0, 3, 1, 2)
         uv_valid = (uv_triangle_index != -1).float().unsqueeze(1)
-        valid_depth = torch.isfinite(z_buffer).float() * uv_valid
-        visibility = (texture_depth <= (z_buffer + 1.0e-2)).float() * valid_depth
+        valid_depth = (projector_valid > 0.5).float() * torch.isfinite(z_buffer).float() * uv_valid
+        visibility = torch.ones_like(valid_depth)
 
-        occluded = (texture_depth > (z_buffer + 1.0e-2)).float() * valid_depth
-        if self.DEFAULT_OCCLUSION_DILATION > 0:
-            occluded = _dilate_mask(occluded, self.DEFAULT_OCCLUSION_DILATION) * uv_valid
+        if bool(occlusion_enabled):
+            depth_epsilon = float(self.DEFAULT_DEPTH_EPSILON)
+            occlusion_dilation = max(0, int(occlusion_dilation))
+            occlusion_fade = max(0, int(occlusion_fade))
+            visibility = (texture_depth <= (z_buffer + depth_epsilon)).float() * valid_depth
 
-        uv_boundary = (uv_valid - _erode_mask(uv_valid, 1)).clamp(0.0, 1.0)
-        seam_guard_radius = self.DEFAULT_OCCLUSION_DILATION + self.DEFAULT_OCCLUSION_FADE
-        seam_guard = _dilate_mask(uv_boundary, seam_guard_radius) if seam_guard_radius > 0 else uv_boundary
-        unlock_radius = max(1, seam_guard_radius // 2) if seam_guard_radius > 0 else 1
-        occlusion_influence = _dilate_mask(occluded, unlock_radius).clamp(0.0, 1.0)
-        overlap_allowed = (uv_valid * ((1.0 - seam_guard) + seam_guard * occlusion_influence)).clamp(0.0, 1.0)
+            occluded = (texture_depth > (z_buffer + depth_epsilon)).float() * valid_depth
+            if occlusion_dilation > 0:
+                occluded = _dilate_mask(occluded, occlusion_dilation) * uv_valid
 
-        if self.DEFAULT_OCCLUSION_FADE > 0:
-            occluded_soft = (
-                _blur_mask(occluded * valid_depth, self.DEFAULT_OCCLUSION_FADE)
-                / _blur_mask(valid_depth, self.DEFAULT_OCCLUSION_FADE).clamp(min=1.0e-6)
-            ).clamp(0.0, 1.0) * valid_depth
-        else:
-            occluded_soft = occluded.clamp(0.0, 1.0)
+            if occlusion_fade > 0:
+                occluded_soft = (
+                    _blur_mask(occluded * valid_depth, occlusion_fade)
+                    / _blur_mask(valid_depth, occlusion_fade).clamp(min=1.0e-6)
+                ).clamp(0.0, 1.0) * valid_depth
+            else:
+                occluded_soft = occluded.clamp(0.0, 1.0)
 
-        visibility_soft = (visibility * (1.0 - occluded_soft)).clamp(0.0, 1.0)
-        visibility = visibility * (1.0 - overlap_allowed) + visibility_soft * overlap_allowed
-        uv_mask = uv_mask * _smoothstep(0.0, 1.0, visibility)
-        uv_mask = _ensure_mask_shape(uv_mask)
+            visibility = (visibility * (1.0 - occluded_soft)).clamp(0.0, 1.0)
+            uv_mask = uv_mask * _smoothstep(0.0, 1.0, visibility)
+            uv_mask = _ensure_mask_shape(uv_mask)
 
         if self.DEFAULT_EDGE_FADE_PIXELS > 0:
             distance_to_edge = torch.minimum(
@@ -376,11 +387,18 @@ class ProjectImageToMeshUV:
         normal_weight = dot_weight.clamp(0.0, 1.0).pow(normal_fade_power)
 
         alpha = (uv_mask.permute(0, 2, 3, 1) * edge_weight * normal_weight).permute(0, 3, 1, 2)
-        alpha = (alpha * sampled_alpha * float(opacity)).clamp(0.0, 1.0)
+        alpha = (alpha * sampled_alpha).clamp(0.0, 1.0)
         projected_rgb = sampled_rgb[:, 0:3].clamp(0.0, 1.0)
 
         if int(dilation_pixels) > 0:
-            projected_rgb, alpha = _dilate_color_by_alpha(projected_rgb, alpha, int(dilation_pixels))
+            dilation_fill_mask = (1.0 - uv_valid).clamp(0.0, 1.0)
+            projected_rgb, alpha = _dilate_color_by_alpha(
+                projected_rgb,
+                alpha,
+                int(dilation_pixels),
+                fill_mask=dilation_fill_mask,
+                ignore_fill_mask_iterations=1,
+            )
 
         projected_rgb = projected_rgb * alpha
 

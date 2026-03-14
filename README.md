@@ -1,39 +1,55 @@
 # ComfyUI-TextureProjection
 
-A minimal ComfyUI custom node pack for camera-based texture projection onto UV-mapped trimeshes.
+A small ComfyUI custom node pack for camera-based texture projection onto trimeshes.
 
-These nodes make use of DRTK for rendering (https://github.com/facebookresearch/DRTK/)
+These nodes use [DRTK](https://github.com/facebookresearch/DRTK/) for rendering and projection, and are meant to slot into workflows where you:
 
-1. Render the model
-2. Enhance the render using SDXL, Flux, Qwen-Image-Edit or any model of your choice
-3. Project the texture back onto the model
+1. Load a mesh
+2. Render one or more views
+3. Enhance those views with the image model of your choice
+4. Project the result back into UV space
 
 ![example image](example_workflows/images/example.jpg)
 
 The UV projection step includes several quality controls to help multiple views combine cleanly:
 
-- Overlap handling with soft visibility fades, so competing views blend out more gracefully instead of leaving hard seams
-- Edge fade
+- Overlap handling with soft visibility fades, so competing views blend more gracefully instead of leaving hard seams
+- Edge fade to reduce artifacts near camera borders
 - Normal-based weighting, so surfaces facing the camera contribute more strongly while glancing angles fade out
-- Optional projection masks and opacity control, for limiting where a view is allowed to write
-- Texture dilation after projection, which helps fill tiny gaps and reduce fringe artifacts around projected regions
-
-Please refer to the example_workflows folder for examples of using both SDXL + Controlnets or Flux.2 Klein.
+- Optional projection masks and opacity control to limit where a view is allowed to write
+- Texture dilation after projection to fill tiny gaps and reduce fringe artifacts
 
 ## Nodes
 
 - `TextureProjection Load GLB`
-  - Loads a GLB file as a `TRIMESH`
+  - Loads a GLB file as a `TRIMESH`.
 - `TextureProjection Camera`
-  - Creates a `CAM_PARAMS` bundle for use in rendering and projection nodes.
+  - Creates a `CAM_PARAMS` bundle for rendering and projection.
 - `TextureProjection MultiView Camera`
-  - Automatically constructs 6 camera vies for Front, Back, Left, Right, Top and Bottom.
+  - Automatically creates six views: front, back, left, right, bottom, and top.
+- `TextureProjection Smooth Normals`
+  - Optionally merges duplicate vertices, recalculates outward-facing normals, and smooths normals across duplicate positions before rendering or projection.
 - `TextureProjection Render Mesh`
-  - Renders base color, depth and normals.
+  - Renders base color, depth, and normals from the supplied camera.
 - `TextureProjection Project To UV`
   - Projects an input image from camera space back into UV space.
 - `TextureProjection Trimesh To GLB`
   - Converts a `TRIMESH` into an in-memory `FILE_3D_GLB` object so it can be passed directly into native ComfyUI nodes such as `Preview3D` and `SaveGLB`.
+
+## Example Workflows
+
+![example image](example_workflows/images/example2.jpg)
+
+The repository includes ready-to-load workflows in [`example_workflows`](example_workflows):
+
+- [`flux_klein_basic_projection.json`](example_workflows/flux_klein_basic_projection.json)
+  - A simple single-view render -> enhance -> project workflow. Good for learning the core projection loop.
+- [`flux_klein_multiview_projection.json`](example_workflows/flux_klein_multiview_projection.json)
+  - A multi-view projection workflow using the built-in multi-view cameras to combine several enhanced views onto one texture.
+- [`sdxl_multiview_projection.json`](example_workflows/sdxl_multiview_projection.json)
+  - An alternate multi-view example that also includes the smooth normals node, useful as a starting point for SDXL, Qwen Image Edit, or other image enhancement stacks.
+- [`flux_klein_trellis2_retexture.json`](example_workflows/flux_klein_trellis2_retexture.json)
+  - A retexture workflow that pairs the projection nodes with [ComfyUI-Trellis2](https://github.com/visualbruno/ComfyUI-Trellis2). It can be used to completely repaint an already textured mesh, or as a starting point for meshes that do not yet have usable UV textures.
 
 ## Requirements
 
@@ -60,15 +76,18 @@ Install dependencies in the same Python environment that ComfyUI uses:
 pip install -r requirements.txt
 ```
 
-Install drtk: https://github.com/facebookresearch/DRTK
+Install DRTK from the official project:
 
-A small number of pre built wheels for windows can be found for `drtk` in the wheels folder, otherwise you will need to build it yourself (see https://drtk.xyz/installation/index.html).
+- https://github.com/facebookresearch/DRTK/
+
+Prebuilt wheels for DRTK and various CUDA combinations can be found here: https://github.com/Aero-Ex/DRTK-Wheels/releases/tag/v0.1.0 if you do not want to bother building them yourself. Thanks to Aero-Ex for building them.
 
 Then restart ComfyUI.
 
 ## Notes
 
-- The model must already have UVs for projection.
+- Standard projection workflows expect the mesh to already have UVs.
+- The Trellis2 retexture example is intended for cases where you want to replace the existing look more aggressively, including meshes that may not already have a usable texture setup.
 - CUDA is required for rendering and projection.
 
 ## License

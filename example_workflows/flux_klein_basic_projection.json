@@ -1,84 +1,9 @@
 {
   "id": "5cb28ef5-1b1e-4076-ab14-5f5095109f41",
   "revision": 0,
-  "last_node_id": 39,
-  "last_link_id": 54,
+  "last_node_id": 40,
+  "last_link_id": 59,
   "nodes": [
-    {
-      "id": 30,
-      "type": "TPProjectImageToMeshUV",
-      "pos": [
-        2938.166103479896,
-        -572.4294889742199
-      ],
-      "size": [
-        297.5469807682233,
-        286
-      ],
-      "flags": {},
-      "order": 7,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "trimesh",
-          "type": "TRIMESH",
-          "link": 34
-        },
-        {
-          "name": "camera",
-          "type": "CAM_PARAMS",
-          "link": 36
-        },
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 52
-        },
-        {
-          "name": "projection_mask",
-          "shape": 7,
-          "type": "MASK",
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "name": "trimesh",
-          "type": "TRIMESH",
-          "links": [
-            47
-          ]
-        },
-        {
-          "name": "texture_map",
-          "type": "IMAGE",
-          "links": null
-        },
-        {
-          "name": "projected_rgb",
-          "type": "IMAGE",
-          "links": []
-        },
-        {
-          "name": "projected_alpha",
-          "type": "MASK",
-          "links": null
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "TPProjectImageToMeshUV"
-      },
-      "widgets_values": [
-        2048,
-        true,
-        1,
-        true,
-        4,
-        true,
-        2.2,
-        0.1
-      ]
-    },
     {
       "id": 31,
       "type": "TPTrimeshToGLB",
@@ -110,71 +35,13 @@
         }
       ],
       "properties": {
+        "aux_id": "stents-dev/ComfyUI-TextureProjection",
+        "ver": "c03ec49c5e67af0923250e9316240ae81fe1a1a8",
         "Node name for S&R": "TPTrimeshToGLB"
       },
       "widgets_values": [
         true
       ]
-    },
-    {
-      "id": 27,
-      "type": "PreviewImage",
-      "pos": [
-        2928.108722982702,
-        -231.61576160029804
-      ],
-      "size": [
-        306.27177121004115,
-        356.8478474733612
-      ],
-      "flags": {},
-      "order": 6,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "link": 51
-        }
-      ],
-      "outputs": [],
-      "title": "Preview (Projection)",
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.12.3",
-        "Node name for S&R": "PreviewImage"
-      },
-      "widgets_values": []
-    },
-    {
-      "id": 37,
-      "type": "PreviewImage",
-      "pos": [
-        2594.125060631681,
-        -230.9494606154306
-      ],
-      "size": [
-        306.27177121004115,
-        356.8478474733612
-      ],
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "link": 53
-        }
-      ],
-      "outputs": [],
-      "title": "Preview (Before)",
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.12.3",
-        "Node name for S&R": "PreviewImage"
-      },
-      "widgets_values": []
     },
     {
       "id": 3,
@@ -218,7 +85,7 @@
         "cnr_id": "comfy-core",
         "ver": "0.12.3",
         "Node name for S&R": "Preview3D",
-        "Last Time Model File": "preview3d_c0d6f9c167fa4332b50fd8a94662d3ce.glb",
+        "Last Time Model File": "preview3d_fa722ef0191648c2b4cf9df300683426.glb",
         "Scene Config": {
           "showGrid": true,
           "backgroundColor": "#282828",
@@ -230,14 +97,14 @@
           "fov": 35,
           "state": {
             "position": {
-              "x": 2.004198911746446,
-              "y": 4.9325853704256275,
-              "z": 5.106284785087887
+              "x": -0.935684149839638,
+              "y": 5.020644212089559,
+              "z": 3.413498908798979
             },
             "target": {
-              "x": 0,
-              "y": 2.5,
-              "z": 0
+              "x": 0.363593070441645,
+              "y": 3.393354879689281,
+              "z": -0.4751160214420434
             },
             "zoom": 1,
             "cameraType": "perspective"
@@ -253,180 +120,76 @@
         }
       },
       "widgets_values": [
-        "preview3d_c0d6f9c167fa4332b50fd8a94662d3ce.glb",
+        "preview3d_fa722ef0191648c2b4cf9df300683426.glb",
         ""
       ]
     },
     {
-      "id": 14,
-      "type": "TPRenderMeshWithCamera",
+      "id": 27,
+      "type": "PreviewImage",
       "pos": [
-        2208.5489811163825,
-        -553.4179346696671
+        2926.849088352323,
+        -179.9707417547549
       ],
       "size": [
-        280.1099131316595,
-        214
+        306.27177121004115,
+        356.8478474733612
       ],
       "flags": {},
-      "order": 3,
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
-          "name": "trimesh",
-          "type": "TRIMESH",
-          "link": 13
-        },
-        {
-          "name": "camera",
-          "type": "CAM_PARAMS",
-          "link": 14
-        }
-      ],
-      "outputs": [
-        {
-          "name": "base_color",
+          "name": "images",
           "type": "IMAGE",
-          "links": [
-            50,
-            53
-          ]
-        },
-        {
-          "name": "depth",
-          "type": "IMAGE",
-          "links": []
-        },
-        {
-          "name": "normals",
-          "type": "IMAGE",
-          "links": []
-        },
-        {
-          "name": "camera",
-          "type": "CAM_PARAMS",
-          "links": [
-            36
-          ]
+          "link": 51
         }
       ],
-      "properties": {
-        "Node name for S&R": "TPRenderMeshWithCamera"
-      },
-      "widgets_values": [
-        true,
-        false,
-        255,
-        255,
-        255
-      ]
-    },
-    {
-      "id": 4,
-      "type": "TPLoadMeshFromGLB",
-      "pos": [
-        2214.7771705219493,
-        -667.730083434259
-      ],
-      "size": [
-        605.1387617385434,
-        58
-      ],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "trimesh",
-          "type": "TRIMESH",
-          "links": [
-            13,
-            34
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "TPLoadMeshFromGLB"
-      },
-      "widgets_values": [
-        "custom_nodes/ComfyUI-TextureProjection/example_workflows/example_assets/example-1.glb"
-      ]
-    },
-    {
-      "id": 5,
-      "type": "TPCreateCameraParameters",
-      "pos": [
-        1908.6282893380035,
-        -544.5983898948974
-      ],
-      "size": [
-        271.81015625,
-        394
-      ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "camera",
-          "type": "CAM_PARAMS",
-          "links": [
-            14
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "TPCreateCameraParameters"
-      },
-      "widgets_values": [
-        "look_at",
-        0,
-        0,
-        0.2,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        "perspective",
-        30,
-        5,
-        1024,
-        1024
-      ]
-    },
-    {
-      "id": 29,
-      "type": "Note",
-      "pos": [
-        2515.977597852191,
-        -564.434593976496
-      ],
-      "size": [
-        398.40043822498365,
-        88.94638214153201
-      ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [],
       "outputs": [],
-      "properties": {},
-      "widgets_values": [
-        "Here we use Flux.2 Klein 4B with a reference latent for enhancement, but feel free to use other models, such as SDXL with a controlnet etc."
+      "title": "Preview (Projection)",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.12.3",
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 37,
+      "type": "PreviewImage",
+      "pos": [
+        2595.3846952620597,
+        -169.22736372685466
       ],
-      "color": "#432",
-      "bgcolor": "#653"
+      "size": [
+        306.27177121004115,
+        356.8478474733612
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 53
+        }
+      ],
+      "outputs": [],
+      "title": "Preview (Before)",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.12.3",
+        "Node name for S&R": "PreviewImage"
+      },
+      "widgets_values": []
     },
     {
       "id": 36,
       "type": "5832962b-427a-4699-aef9-eff1a9ad711e",
       "pos": [
         2514.1487258378206,
-        -429.96154824259503
+        -389.36175437087195
       ],
       "size": [
         400.0903169481194,
@@ -467,17 +230,262 @@
         "ver": "0.12.3"
       },
       "widgets_values": []
+    },
+    {
+      "id": 29,
+      "type": "Note",
+      "pos": [
+        2513.8955571408205,
+        -531.1219425945698
+      ],
+      "size": [
+        398.40043822498365,
+        88.94638214153201
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "Here we use Flux.2 Klein 4B with a reference latent for enhancement, but feel free to use other models, such as SDXL with a controlnet etc."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 5,
+      "type": "TPCreateCameraParameters",
+      "pos": [
+        1917.9974725391712,
+        -519.6139013584528
+      ],
+      "size": [
+        271.81015625,
+        394
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "camera",
+          "type": "CAM_PARAMS",
+          "links": [
+            14
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "stents-dev/ComfyUI-TextureProjection",
+        "ver": "c03ec49c5e67af0923250e9316240ae81fe1a1a8",
+        "Node name for S&R": "TPCreateCameraParameters"
+      },
+      "widgets_values": [
+        "look_at",
+        0,
+        0,
+        0.2,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        "perspective",
+        30,
+        5,
+        1024,
+        1024
+      ]
+    },
+    {
+      "id": 30,
+      "type": "TPProjectImageToMeshUV",
+      "pos": [
+        2938.166103479896,
+        -572.4294889742199
+      ],
+      "size": [
+        297.5469807682233,
+        334
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "trimesh",
+          "type": "TRIMESH",
+          "link": 59
+        },
+        {
+          "name": "camera",
+          "type": "CAM_PARAMS",
+          "link": 36
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 52
+        },
+        {
+          "name": "projection_mask",
+          "shape": 7,
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "trimesh",
+          "type": "TRIMESH",
+          "links": [
+            47
+          ]
+        },
+        {
+          "name": "texture_map",
+          "type": "IMAGE",
+          "links": null
+        },
+        {
+          "name": "projected_rgb",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "projected_alpha",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "stents-dev/ComfyUI-TextureProjection",
+        "ver": "c03ec49c5e67af0923250e9316240ae81fe1a1a8",
+        "Node name for S&R": "TPProjectImageToMeshUV"
+      },
+      "widgets_values": [
+        2048,
+        true,
+        1,
+        true,
+        0,
+        5,
+        5,
+        0.1,
+        1,
+        0.1
+      ]
+    },
+    {
+      "id": 14,
+      "type": "TPRenderMeshWithCamera",
+      "pos": [
+        2207.507960760697,
+        -524.2693647104817
+      ],
+      "size": [
+        280.1099131316595,
+        262
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "trimesh",
+          "type": "TRIMESH",
+          "link": 58
+        },
+        {
+          "name": "camera",
+          "type": "CAM_PARAMS",
+          "link": 14
+        }
+      ],
+      "outputs": [
+        {
+          "name": "base_color",
+          "type": "IMAGE",
+          "links": [
+            50,
+            53
+          ]
+        },
+        {
+          "name": "depth",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "normals",
+          "type": "IMAGE",
+          "links": []
+        },
+        {
+          "name": "camera",
+          "type": "CAM_PARAMS",
+          "links": [
+            36
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "stents-dev/ComfyUI-TextureProjection",
+        "ver": "c03ec49c5e67af0923250e9316240ae81fe1a1a8",
+        "Node name for S&R": "TPRenderMeshWithCamera"
+      },
+      "widgets_values": [
+        true,
+        true,
+        255,
+        255,
+        30,
+        30,
+        30
+      ]
+    },
+    {
+      "id": 4,
+      "type": "TPLoadMeshFromGLB",
+      "pos": [
+        2303.6159122890235,
+        -652.0070252462345
+      ],
+      "size": [
+        605.1387617385434,
+        58
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "trimesh",
+          "type": "TRIMESH",
+          "links": [
+            58,
+            59
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "stents-dev/ComfyUI-TextureProjection",
+        "ver": "c03ec49c5e67af0923250e9316240ae81fe1a1a8",
+        "Node name for S&R": "TPLoadMeshFromGLB"
+      },
+      "widgets_values": [
+        "custom_nodes/ComfyUI-TextureProjection/example_workflows/example_assets/example-1.glb"
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
     }
   ],
   "links": [
-    [
-      13,
-      4,
-      0,
-      14,
-      0,
-      "TRIMESH"
-    ],
     [
       14,
       5,
@@ -485,14 +493,6 @@
       14,
       1,
       "CAM_PARAMS"
-    ],
-    [
-      34,
-      4,
-      0,
-      30,
-      0,
-      "TRIMESH"
     ],
     [
       36,
@@ -549,6 +549,22 @@
       37,
       0,
       "IMAGE"
+    ],
+    [
+      58,
+      4,
+      0,
+      14,
+      0,
+      "TRIMESH"
+    ],
+    [
+      59,
+      4,
+      0,
+      30,
+      0,
+      "TRIMESH"
     ]
   ],
   "groups": [],
@@ -1134,10 +1150,10 @@
     "workflowRendererVersion": "LG",
     "frontendVersion": "1.38.13",
     "ds": {
-      "scale": 1.056655611000011,
+      "scale": 1.116781577942479,
       "offset": [
-        -1701.4902326737108,
-        1287.6960403429766
+        -1827.3884440174982,
+        790.39693033002
       ]
     }
   },

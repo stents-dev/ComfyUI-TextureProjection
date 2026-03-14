@@ -15,11 +15,13 @@ else:
 
 from ..utils import (
     _as_trimesh,
+    _blur_mask,
     _camera_projection_mode,
     _compute_intrinsics_from_fovy,
     _compute_intrinsics_from_ortho_size,
     _pose_to_w2c,
     _rgb_uint8_to_comfy,
+    smooth_normals_across_duplicate_positions,
 )
 
 
@@ -31,10 +33,12 @@ class RenderMeshWithCamera:
                 "trimesh": ("TRIMESH",),
                 "camera": ("CAM_PARAMS",),
                 "fit_to_model_bounds": ("BOOLEAN", {"default": False}),
+                "smooth_normals": ("BOOLEAN", {"default": True}),
+                "smooth_depth": ("BOOLEAN", {"default": False}),
                 "transparent_background": ("BOOLEAN", {"default": False}),
-                "background_red": ("INT", {"default": 255, "min": 0, "max": 255, "step": 1}),
-                "background_green": ("INT", {"default": 255, "min": 0, "max": 255, "step": 1}),
-                "background_blue": ("INT", {"default": 255, "min": 0, "max": 255, "step": 1}),
+                "background_red": ("INT", {"default": 30, "min": 0, "max": 255, "step": 1}),
+                "background_green": ("INT", {"default": 30, "min": 0, "max": 255, "step": 1}),
+                "background_blue": ("INT", {"default": 30, "min": 0, "max": 255, "step": 1}),
             }
         }
 
@@ -235,6 +239,8 @@ class RenderMeshWithCamera:
         trimesh,
         camera,
         fit_to_model_bounds,
+        smooth_normals,
+        smooth_depth,
         transparent_background,
         background_red,
         background_green,
@@ -314,7 +320,10 @@ class RenderMeshWithCamera:
         vertices = torch.as_tensor(vertices_np, device=device)[None, ...]
         face_indices = torch.as_tensor(faces_np, device=device, dtype=torch.int32)
 
-        vertex_normals_np = np.asarray(trimesh_mesh.vertex_normals, dtype=np.float32)
+        if bool(smooth_normals):
+            vertex_normals_np = smooth_normals_across_duplicate_positions(trimesh_mesh)
+        else:
+            vertex_normals_np = np.asarray(trimesh_mesh.vertex_normals, dtype=np.float32)
         vertex_normals = torch.as_tensor(vertex_normals_np, device=device)[None, ...]
         vertex_normals = F.normalize(vertex_normals, dim=-1, eps=1.0e-8)
 
@@ -409,8 +418,16 @@ class RenderMeshWithCamera:
         depth_image = drtk.interpolate(z.unsqueeze(-1), face_indices, triangle_index, barycentric)
         depth_image = self._as_bchw(depth_image, 1)
 
+        depth_valid = torch.isfinite(depth_image).float() * valid
+        if bool(smooth_depth):
+            depth_image = (
+                _blur_mask(depth_image * depth_valid, radius=2)
+                / _blur_mask(depth_valid, radius=2).clamp(min=1.0e-6)
+            )
+            depth_image = torch.where(depth_valid > 0.0, depth_image, torch.zeros_like(depth_image))
+
         depth_np = depth_image[0, 0].detach().cpu().numpy().astype(np.float32)
-        valid_np = valid[0, 0].detach().cpu().numpy() > 0.5
+        valid_np = depth_valid[0, 0].detach().cpu().numpy() > 0.5
         valid_np = valid_np & np.isfinite(depth_np) & (depth_np > 0.0)
         if np.any(valid_np):
             depth_min = float(depth_np[valid_np].min())

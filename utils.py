@@ -199,6 +199,135 @@ def smooth_normals_across_duplicate_positions(
     return output_normals.astype(np.float32)
 
 
+def recalculate_outward_vertex_normals(mesh: Trimesh.Trimesh) -> np.ndarray:
+    """
+    Approximate Blender's Recalculate Outside by repairing winding on a
+    temporary welded copy of the mesh, then transferring the inferred face
+    flips back to the original seam-split topology before recomputing normals.
+    """
+    if getattr(mesh, "vertices", None) is None or len(mesh.vertices) == 0:
+        return np.zeros((0, 3), dtype=np.float32)
+
+    try:
+        mesh.remove_infinite_values()
+    except Exception:
+        pass
+
+    try:
+        mesh.remove_unreferenced_vertices()
+    except Exception:
+        pass
+
+    vertices = np.asarray(mesh.vertices, dtype=np.float64)
+    faces = np.asarray(mesh.faces, dtype=np.int64)
+    if faces.ndim != 2 or faces.shape[1] != 3 or faces.shape[0] == 0:
+        return np.asarray(mesh.vertex_normals, dtype=np.float32)
+
+    welded_mesh = mesh.copy()
+    try:
+        welded_mesh.merge_vertices(merge_tex=True, merge_norm=True)
+    except Exception:
+        try:
+            welded_mesh.merge_vertices()
+        except Exception:
+            welded_mesh = mesh.copy()
+
+    welded_faces_before = np.asarray(welded_mesh.faces, dtype=np.int64).copy()
+
+    try:
+        Trimesh.repair.fix_winding(welded_mesh)
+    except Exception:
+        try:
+            welded_mesh.fix_normals(multibody=False)
+        except Exception:
+            pass
+
+    welded_vertices = np.asarray(welded_mesh.vertices, dtype=np.float64)
+    welded_faces_after = np.asarray(welded_mesh.faces, dtype=np.int64).copy()
+    if welded_faces_after.shape != welded_faces_before.shape:
+        welded_faces_after = welded_faces_before.copy()
+
+    try:
+        components = Trimesh.graph.connected_components(
+            np.asarray(welded_mesh.face_adjacency, dtype=np.int64),
+            nodes=np.arange(len(welded_faces_after), dtype=np.int64),
+            min_len=1,
+        )
+    except Exception:
+        components = [np.arange(len(welded_faces_after), dtype=np.int64)]
+
+    for component in components:
+        component = np.asarray(component, dtype=np.int64)
+        if component.size == 0:
+            continue
+
+        component_faces = welded_faces_after[component]
+        triangles = welded_vertices[component_faces]
+        cross = np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0])
+        double_area = np.linalg.norm(cross, axis=1)
+        valid_triangles = double_area > 1.0e-12
+        if not np.any(valid_triangles):
+            continue
+
+        signed_volume = np.sum(
+            np.einsum(
+                "ij,ij->i",
+                triangles[:, 0],
+                np.cross(triangles[:, 1], triangles[:, 2]),
+            )
+        ) / 6.0
+
+        flip_component = False
+        if np.isfinite(signed_volume) and abs(float(signed_volume)) > 1.0e-10:
+            flip_component = float(signed_volume) < 0.0
+        else:
+            component_vertex_ids = np.unique(component_faces.reshape(-1))
+            component_center = welded_vertices[component_vertex_ids].mean(axis=0)
+            face_centers = triangles.mean(axis=1)
+            face_normals = cross / (double_area[:, None] + 1.0e-12)
+            alignment = np.sum((face_centers - component_center[None, :]) * face_normals, axis=1)
+            score = float(np.sum(alignment[valid_triangles] * double_area[valid_triangles]))
+            flip_component = score < 0.0
+
+        if flip_component:
+            welded_faces_after[component] = np.fliplr(component_faces)
+
+    flipped_faces = np.all(welded_faces_after == welded_faces_before[:, ::-1], axis=1)
+    faces_out = faces.copy()
+    if np.any(flipped_faces):
+        faces_out[flipped_faces] = np.fliplr(faces_out[flipped_faces])
+        mesh.faces = faces_out
+
+    vertices = np.asarray(mesh.vertices, dtype=np.float64)
+    if vertices.size == 0:
+        return np.zeros((0, 3), dtype=np.float32)
+
+    accumulated = np.zeros((len(vertices), 3), dtype=np.float64)
+    if faces_out.shape[0] > 0:
+        triangles = vertices[faces_out]
+        cross = np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0])
+        double_area = np.linalg.norm(cross, axis=1)
+        valid_triangles = (
+            np.isfinite(double_area)
+            & (double_area > 1.0e-20)
+            & np.all(np.isfinite(cross), axis=1)
+        )
+        if np.any(valid_triangles):
+            weighted_face_normals = cross[valid_triangles]
+            valid_faces = faces_out[valid_triangles]
+            np.add.at(accumulated, valid_faces[:, 0], weighted_face_normals)
+            np.add.at(accumulated, valid_faces[:, 1], weighted_face_normals)
+            np.add.at(accumulated, valid_faces[:, 2], weighted_face_normals)
+
+    normals = np.nan_to_num(accumulated, nan=0.0, posinf=0.0, neginf=0.0)
+    normal_lengths = np.linalg.norm(normals, axis=1, keepdims=True)
+    fallback = normal_lengths[:, 0] <= 1.0e-20
+    normals = normals / (normal_lengths + 1.0e-12)
+    if np.any(fallback):
+        normals[fallback] = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+    return normals.astype(np.float32)
+
+
 def _rgb_uint8_to_comfy(rgb_uint8: np.ndarray) -> torch.Tensor:
     return torch.from_numpy(rgb_uint8.astype(np.float32) / 255.0).unsqueeze(0)
 
@@ -252,10 +381,22 @@ def _pixel_grid_from_uv(u_pixels: torch.Tensor, v_pixels: torch.Tensor, width: i
     return torch.stack([grid_x, grid_y], dim=-1)
 
 
-def _dilate_color_by_alpha(rgb: torch.Tensor, alpha: torch.Tensor, iterations: int):
+def _dilate_color_by_alpha(
+    rgb: torch.Tensor,
+    alpha: torch.Tensor,
+    iterations: int,
+    fill_mask: torch.Tensor | None = None,
+    ignore_fill_mask_iterations: int = 0,
+):
     result_rgb = rgb
     result_alpha = alpha
-    for _ in range(int(iterations)):
+    if fill_mask is None:
+        fill_mask = torch.ones_like(alpha)
+    else:
+        fill_mask = (fill_mask > 0.5).to(dtype=alpha.dtype, device=alpha.device)
+
+    unrestricted_iterations = max(0, int(ignore_fill_mask_iterations))
+    for iteration in range(int(iterations)):
         alpha_pool, indices = F.max_pool2d(result_alpha, kernel_size=3, stride=1, padding=1, return_indices=True)
         batch, channels, height, width = result_rgb.shape
         rgb_flat = result_rgb.view(batch, channels, -1)
@@ -263,8 +404,10 @@ def _dilate_color_by_alpha(rgb: torch.Tensor, alpha: torch.Tensor, iterations: i
         rgb_fill = torch.gather(rgb_flat, 2, gather_idx).view(batch, channels, height, width)
 
         replace_mask = (result_alpha < 1.0e-6).float()
+        if iteration >= unrestricted_iterations:
+            replace_mask = (replace_mask * fill_mask).clamp(0.0, 1.0)
         result_rgb = result_rgb * (1.0 - replace_mask) + rgb_fill * replace_mask
-        result_alpha = torch.maximum(result_alpha, alpha_pool)
+        result_alpha = result_alpha * (1.0 - replace_mask) + torch.maximum(result_alpha, alpha_pool) * replace_mask
 
     return result_rgb, result_alpha
 
