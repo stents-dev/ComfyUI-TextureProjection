@@ -30,10 +30,10 @@ from ..utils import (
 
 
 class ProjectImageToMeshUV:
-    DEFAULT_EDGE_FADE_PIXELS = 24
     DEFAULT_EDGE_FADE_POWER = 1.0
-    DEFAULT_DEPTH_BLUR = 1
-    DEFAULT_DEPTH_EPSILON = 3.0e-2
+    DEFAULT_DEPTH_BLUR = 0
+    DEFAULT_DEPTH_EPSILON_ABS = 5.0e-4
+    DEFAULT_DEPTH_EPSILON_REL = 5.0e-4
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -55,6 +55,7 @@ class ProjectImageToMeshUV:
                 "normal_fade_power": ("FLOAT", {"default": 2.2, "min": 0.1, "max": 8.0, "step": 0.01}),
                 "normal_fade_min": ("FLOAT", {"default": 0.1, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "projection_mask": ("MASK",),
+                "edge_fade": ("INT", {"default": 24, "min": 0, "max": 1024, "step": 1}),
             },
         }
 
@@ -79,6 +80,7 @@ class ProjectImageToMeshUV:
         normal_fade_power=2.2,
         normal_fade_min=0.1,
         projection_mask=None,
+        edge_fade=24,
     ):
         if drtk is None:
             raise ImportError(f"drtk import failed: {_DRTK_IMPORT_ERROR}")
@@ -336,7 +338,9 @@ class ProjectImageToMeshUV:
                 _blur_mask(z_buffer_safe, self.DEFAULT_DEPTH_BLUR)
                 / _blur_mask(sampled_depth_valid, self.DEFAULT_DEPTH_BLUR).clamp(min=1.0e-6)
             )
-            z_buffer = torch.where(sampled_depth_valid > 0.0, z_buffer_blurred, z_buffer)
+            # Keep any optional depth smoothing conservative so farther occluded texels
+            # cannot leak through at depth discontinuities.
+            z_buffer = torch.where(sampled_depth_valid > 0.0, torch.minimum(z_buffer, z_buffer_blurred), z_buffer)
 
         texture_depth = z.view(1, size, size, 1).permute(0, 3, 1, 2)
         uv_valid = (uv_triangle_index != -1).float().unsqueeze(1)
@@ -344,12 +348,17 @@ class ProjectImageToMeshUV:
         visibility = torch.ones_like(valid_depth)
 
         if bool(occlusion_enabled):
-            depth_epsilon = float(self.DEFAULT_DEPTH_EPSILON)
             occlusion_dilation = max(0, int(occlusion_dilation))
             occlusion_fade = max(0, int(occlusion_fade))
-            visibility = (texture_depth <= (z_buffer + depth_epsilon)).float() * valid_depth
+            depth_reference = torch.maximum(texture_depth.abs(), z_buffer.abs())
+            depth_epsilon = torch.clamp(
+                depth_reference * float(self.DEFAULT_DEPTH_EPSILON_REL),
+                min=float(self.DEFAULT_DEPTH_EPSILON_ABS),
+            )
+            depth_delta = texture_depth - z_buffer
+            visibility = (depth_delta <= depth_epsilon).float() * valid_depth
 
-            occluded = (texture_depth > (z_buffer + depth_epsilon)).float() * valid_depth
+            occluded = (depth_delta > depth_epsilon).float() * valid_depth
             if occlusion_dilation > 0:
                 occluded = _dilate_mask(occluded, occlusion_dilation) * uv_valid
 
@@ -365,7 +374,7 @@ class ProjectImageToMeshUV:
             uv_mask = uv_mask * _smoothstep(0.0, 1.0, visibility)
             uv_mask = _ensure_mask_shape(uv_mask)
 
-        if self.DEFAULT_EDGE_FADE_PIXELS > 0:
+        if edge_fade > 0:
             distance_to_edge = torch.minimum(
                 torch.minimum(u_pixels, (render_width - 1) - u_pixels),
                 torch.minimum(v_pixels, (render_height - 1) - v_pixels),
@@ -373,7 +382,7 @@ class ProjectImageToMeshUV:
             distance_to_edge = distance_to_edge.reshape(1, size, size, 1).clamp(min=0.0)
             edge_weight = _smoothstep(
                 torch.zeros_like(distance_to_edge),
-                torch.full_like(distance_to_edge, float(self.DEFAULT_EDGE_FADE_PIXELS)),
+                torch.full_like(distance_to_edge, float(edge_fade)),
                 distance_to_edge,
             ).pow(self.DEFAULT_EDGE_FADE_POWER)
         else:
@@ -424,3 +433,4 @@ class ProjectImageToMeshUV:
         projected_layer = projected_rgb.permute(0, 2, 3, 1).contiguous().detach().cpu()
         projected_alpha = alpha[0, 0].detach().cpu()
         return (updated_trimesh, texture_map, projected_layer, projected_alpha)
+
